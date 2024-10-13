@@ -16,27 +16,30 @@ def split_data(X_data, y_data, train_size):
     X_train, X_val, y_train, y_val = train_test_split(X_data, y_data, train_size=train_size)
     return X_train, X_val, y_train, y_val
 
-def get_quantized_model(model, X_train):
+def get_quantized_model(model, X_train, quant_type = 1):
   def representative_data_gen():
     for input_value in tf.data.Dataset.from_tensor_slices(X_train).batch(1).take(100):
       yield [input_value]
 
-  # converter = tf.lite.TFLiteConverter.from_keras_model(model)
-  # converter.optimizations = [tf.lite.Optimize.DEFAULT]
-  # converter.representative_dataset = representative_data_gen
-  # converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-  # converter.inference_input_type = tf.uint8
-  # converter.inference_output_type = tf.uint8
-  # tflite_quant_model = converter.convert()
+  if quant_type == 1:
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_data_gen
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.inference_input_type = tf.uint8
+    converter.inference_output_type = tf.uint8
+    tflite_quant_model = converter.convert()
 
-  # converter = tf.lite.TFLiteConverter.from_keras_model(model)
-  # converter.optimizations = [tf.lite.Optimize.DEFAULT]
-  # converter.target_spec.supported_types = [tf.float16]
-  # tflite_quant_model = converter.convert()
+  elif quant_type == 2:
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_types = [tf.float16]
+    tflite_quant_model = converter.convert()
 
-  converter = tf.lite.TFLiteConverter.from_keras_model(model)
-  converter.optimizations = [tf.lite.Optimize.DEFAULT]
-  tflite_quant_model = converter.convert()
+  else:
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_quant_model = converter.convert()
 
   return tflite_quant_model
 
@@ -50,14 +53,10 @@ def get_pruned_model(model, X_data, params):
   prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
   end_step = np.ceil(len(X_data) / params['batch_size']).astype(np.int32) * params['epochs']
 
-  # pruning_params = {'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.5,
-  #                                                              final_sparsity=0.5,
-  #                                                              begin_step=0,
-  #                                                              end_step=end_step)}
-
-  pruning_params = {
-    'sparsity_m_by_n': (2, 4),
-    }
+  pruning_params = {'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.5,
+                                                               final_sparsity=0.5,
+                                                               begin_step=0,
+                                                               end_step=end_step)}
 
   model_for_pruning = prune_low_magnitude(model, **pruning_params)
 
@@ -153,7 +152,6 @@ def compare_model_sizes(tflite_quant_model, model):
 
     model.save('saved_model', save_format='tf')
     model_dir = 'saved_model'
-
     non_quantized_model_size = get_model_size(model_dir) / float(2**10)
     quantized_model_size = os.path.getsize('converted_quant_model.tflite') / float(2**10)
 
